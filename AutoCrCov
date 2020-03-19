@@ -1,0 +1,58 @@
+#include <RcppArmadillo.h>
+
+using namespace Rcpp;
+
+// [[Rcpp::depends(RcppArmadillo)]]
+// [[Rcpp::export]]
+
+List AutoCrCov(arma::mat xin1, arma::mat xin2, arma::mat tin1,
+                     arma::mat tin2, double bw1, double bw2, arma::mat grids){
+  
+  int nrow1 = xin1.n_rows, ncol1 = xin1.n_cols, ncol2 = xin2.n_cols;
+  int ng = grids.n_rows;
+  int nn = ncol1*ncol2;
+  double pi = 3.14159265358979323846, u0, v0;
+  arma::rowvec du(ncol1); arma::rowvec dv(ncol2);
+  arma::rowvec w1(ncol1); arma::rowvec w2(ncol2);
+  arma::rowvec w_sqrt(nn);
+  arma::rowvec y(nn);
+  arma::mat x(nn, 3);
+  arma::rowvec ones1 = arma::trans(arma::ones(ncol1));
+  arma::rowvec ones2 = arma::trans(arma::ones(ncol2));
+  arma::mat XX = arma::zeros(3, 3);
+  arma::colvec XY = arma::zeros(3);
+  arma::mat S(ng, ng);
+  
+  
+  for(int t1 = 0; t1 < ng; t1++){
+    for(int t2 = 0; t2 < ng; t2++){
+      
+      u0 = grids(t1,0); v0 = grids(t2,1);
+      XX = XX * 0; XY = XY * 0;
+      
+      for (int i = 0; i < nrow1; i++) {
+        du = tin1.row(i) - u0;
+        dv = tin2.row(i) - v0;
+        w1 = exp(-(pow(du/bw1, 2)) / 2) / sqrt(2*pi);
+        w2 = exp(-(pow(dv/bw2, 2)) / 2) / sqrt(2*pi);
+        w_sqrt = arma::kron(sqrt(w1), sqrt(w2));
+        y = arma::kron(xin1.row(i), xin2.row(i)) % w_sqrt;
+        
+        x.col(0) = w_sqrt.t();
+        // x.col(1) = arma::trans(kron(du, ones2) % w_sqrt);
+        // x.col(2) = arma::trans(kron(ones1, dv) % w_sqrt);
+        x.col(1) = arma::trans(kron(tin1.row(i), ones2) % w_sqrt);
+        x.col(2) = arma::trans(kron(ones1, tin2.row(i)) % w_sqrt);
+        
+        XX = XX + x.t() * x;
+        XY = XY + x.t() * y.t();
+      }
+      
+      arma::colvec coef = arma::inv_sympd(XX) * XY;
+      S(t1, t2) = coef(0) + coef(1) * u0 + coef(2) * v0;
+      
+    }
+  }
+  
+  return List::create(Named("cout") = S);
+}
